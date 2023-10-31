@@ -1,27 +1,20 @@
 #include <WiFi.h>
 #include <ESPAsyncWebSrv.h>
 #include <vector>
+#include <TimeAlarms.h>
 
 const char* ssid = "TuPuntoDeAcceso";
 const char* password = "TuClaveDeAcceso";
 const int ledPin = 5;
 AsyncWebServer server(80);
 
-struct Alarm {
-  String name;
-  unsigned long time;
-  unsigned int quantity;
-  unsigned long startTime;
-};
-
-std::vector<Alarm> alarms;
-unsigned long alarmStartTime = 0;
+AlarmId id;
 
 void setup() {
   Serial.begin(115200);
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, LOW);
-
+  setTime(0, 0, 0, 1, 1, 2023);
   WiFi.softAP(ssid, password);
   Serial.println("Punto de acceso WiFi creado");
   Serial.println(WiFi.softAPIP());
@@ -101,28 +94,40 @@ void setup() {
                 name="interval1"
                 placeholder="Horas"
               />
-              <label for="quantity1">Cantidad de dosis:</label>
+            </div>
+
+            <div class="medicamento">
+              <label for="name2">Medicamento 2:</label>
               <input
-                type="number"
-                id="quantity1"
-                name="quantity1"
-                placeholder="Cantidad"
+                type="text"
+                id="name2"
+                name="name2"
+                placeholder="Nombre del medicamento"
               />
             </div>
+            <div class="dosis">
+              <label for="interval2">Intervalo de dosis:</label>
+              <input
+                type="number"
+                id="interval2"
+                name="interval2"
+                placeholder="Horas"
+              />
+            </div>
+            
             <input type="submit" value="Configurar Alarma" onclick='configureAlarm()'>
           </div>
           <script>
             function configureAlarm() {
-              const name = document.getElementById("name1").value;
-              const interval = document.getElementById("interval1").value;
-              const quantity = document.getElementById("quantity1").value;
-
+              const name = document.getElementById(`name1`).value;
+              const interval = document.getElementById(`interval1`).value;
+                
               fetch('/setAlarm', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: `name=${name}&interval=${interval}&quantity=${quantity}`,
+                body: `name=${name}&interval=${interval}`,
               })
               .then(response => {
                 if (response.ok) {
@@ -144,20 +149,12 @@ void setup() {
   server.on("/setAlarm", HTTP_POST, [](AsyncWebServerRequest *request){
     String name;
     unsigned long interval;
-    unsigned int quantity;
-
-    if (request->hasParam("name", true) && request->hasParam("interval", true) && request->hasParam("quantity", true)) {
+    if (request->hasParam("name", true) && request->hasParam("interval", true)) {
       name = request->getParam("name", true)->value();
       interval = request->getParam("interval", true)->value().toInt();
-      quantity = request->getParam("quantity", true)->value().toInt();
-
-      Alarm newAlarm;
-      newAlarm.name = name;
-      newAlarm.time = interval;
-      newAlarm.quantity = quantity;
-      newAlarm.startTime = millis();
-      alarms.push_back(newAlarm);
-
+      Serial.println(name);
+      Alarm.free(id);
+      id = Alarm.timerRepeat(interval, buzzer);
       request->send(200, "text/plain", "Alarma configurada con éxito");
     } else {
       request->send(400, "text/plain", "Error en la configuración de la alarma");
@@ -167,21 +164,12 @@ void setup() {
   server.begin();
 }
 
+void buzzer(){
+  digitalWrite(ledPin, HIGH);
+  delay(2000);
+  digitalWrite(ledPin, LOW);
+}
+
 void loop() {
-  if (alarms.empty()) { }
-  else{
-    unsigned long currentTime = millis();
-    for(int i=0; i < alarms.size(); ++i){
-      if((currentTime - alarms[i].startTime) >= (alarms[i].time * 1000)){
-        digitalWrite(ledPin, HIGH);
-        delay(5000);
-        digitalWrite(ledPin, LOW);
-        alarms.erase(alarms.begin() + i);
-      }
-      // Serial.println(alarms[i].name);
-      // Serial.println(alarms[i].quantity);
-      // Serial.println(alarms[i].time * 1000);
-      // Serial.println(currentTime);
-    }
-  }
+  Alarm.delay(1000);
 }
