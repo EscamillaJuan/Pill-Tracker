@@ -4,14 +4,115 @@
 #include <TimeAlarms.h>
 #include <queue>
 #include <ESP_FlexyStepper.h>
+#include <ESP32Servo.h>
+#include <WS2812FX.h>
 
+#define NOTE_B0  31
+#define NOTE_C1  33
+#define NOTE_CS1 35
+#define NOTE_D1  37
+#define NOTE_DS1 39
+#define NOTE_E1  41
+#define NOTE_F1  44
+#define NOTE_FS1 46
+#define NOTE_G1  49
+#define NOTE_GS1 52
+#define NOTE_A1  55
+#define NOTE_AS1 58
+#define NOTE_B1  62
+#define NOTE_C2  65
+#define NOTE_CS2 69
+#define NOTE_D2  73
+#define NOTE_DS2 78
+#define NOTE_E2  82
+#define NOTE_F2  87
+#define NOTE_FS2 93
+#define NOTE_G2  98
+#define NOTE_GS2 104
+#define NOTE_A2  110
+#define NOTE_AS2 117
+#define NOTE_B2  123
+#define NOTE_C3  131
+#define NOTE_CS3 139
+#define NOTE_D3  147
+#define NOTE_DS3 156
+#define NOTE_E3  165
+#define NOTE_F3  175
+#define NOTE_FS3 185
+#define NOTE_G3  196
+#define NOTE_GS3 208
+#define NOTE_A3  220
+#define NOTE_AS3 233
+#define NOTE_B3  247
+#define NOTE_C4  262
+#define NOTE_CS4 277
+#define NOTE_D4  294
+#define NOTE_DS4 311
+#define NOTE_E4  330
+#define NOTE_F4  349
+#define NOTE_FS4 370
+#define NOTE_G4  392
+#define NOTE_GS4 415
+#define NOTE_A4  440
+#define NOTE_AS4 466
+#define NOTE_B4  494
+#define NOTE_C5  523
+#define NOTE_CS5 554
+#define NOTE_D5  587
+#define NOTE_DS5 622
+#define NOTE_E5  659
+#define NOTE_F5  698
+#define NOTE_FS5 740
+#define NOTE_G5  784
+#define NOTE_GS5 831
+#define NOTE_A5  880
+#define NOTE_AS5 932
+#define NOTE_B5  988
+#define NOTE_C6  1047
+#define NOTE_CS6 1109
+#define NOTE_D6  1175
+#define NOTE_DS6 1245
+#define NOTE_E6  1319
+#define NOTE_F6  1397
+#define NOTE_FS6 1480
+#define NOTE_G6  1568
+#define NOTE_GS6 1661
+#define NOTE_A6  1760
+#define NOTE_AS6 1865
+#define NOTE_B6  1976
+#define NOTE_C7  2093
+#define NOTE_CS7 2217
+#define NOTE_D7  2349
+#define NOTE_DS7 2489
+#define NOTE_E7  2637
+#define NOTE_F7  2794
+#define NOTE_FS7 2960
+#define NOTE_G7  3136
+#define NOTE_GS7 3322
+#define NOTE_A7  3520
+#define NOTE_AS7 3729
+#define NOTE_B7  3951
+#define NOTE_C8  4186
+#define NOTE_CS8 4435
+#define NOTE_D8  4699
+#define NOTE_DS8 4978
 
-const char* ssid = "TuPuntoDeAcceso";
-const char* password = "TuClaveDeAcceso";
-const int ledPin = 5;
-const int MOTOR_STEP_PIN = 33;
-const int MOTOR_DIRECTION_PIN = 32;
-const int EMERGENCY_STOP_PIN = 13;
+int melody[] = {
+    NOTE_C4, NOTE_G3, NOTE_G3, NOTE_A3, NOTE_G3, 0, NOTE_B3, NOTE_C4
+};
+int noteDurations[] = {
+  4, 8, 8, 4, 4, 4, 4, 4
+};
+
+const char* ssid = "Auto-Dosis";
+const char* password = "mispastillasatodahora";
+const int MOTOR_STEP_PIN = 22;
+const int MOTOR_DIRECTION_PIN = 23;
+const int MOTOR_ENABLE = 21;
+const int SERVO_PIN = 5;
+const int PIN_NEO = 19;
+const int NUM_LEDS = 50;
+
 AsyncWebServer server(80);
 
 AlarmId id1;
@@ -25,32 +126,43 @@ AlarmId id8;
 
 std::queue<int> QueueSteps;
 int motorDirection = 1;
-const int SPEED_IN_STEPS_PER_SECOND = 300;
-const int ACCELERATION_IN_STEPS_PER_SECOND_PER_SECOND = 800;
-const int DECELERATION_IN_STEPS_PER_SECOND_PER_SECOND = 800;
-int AlarmSteps[8] = {10,20,30,40,50,60,70,80};
+const int SPEED_IN_STEPS_PER_SECOND = 100;
+const int ACCELERATION_IN_STEPS_PER_SECOND_PER_SECOND = 100;
+const int DECELERATION_IN_STEPS_PER_SECOND_PER_SECOND = 200;
+int AlarmSteps[8] = {0,25,50,75,100,125,150,175};
 
-ESP_FlexyStepper stepper;
+ESP_FlexyStepper stepper; // Motor a pasos
+Servo servo;              //Servomotor
+WS2812FX Neo_pixel = WS2812FX(NUM_LEDS, PIN_NEO, NEO_RGB + NEO_KHZ800); //Neopixel
 
 void processStepsTask(void *pvParameters){
   (void)pvParameters;
   for (;;) {
+    Neo_pixel.service();
     if(stepper.getDistanceToTargetSigned() == 0 && !QueueSteps.empty()){
+
+      process_movement();                           //Se activan los leds en Amarillo
+      digitalWrite(MOTOR_ENABLE, LOW);
       int steps = QueueSteps.front();
-      long relativeTargetPosition = steps * motorDirection;
-      Serial.printf("Moving stepper by %ld steps\n", relativeTargetPosition);
-      Serial.printf("Moving stepper by %ld direction\n", motorDirection);
-      stepper.setTargetPositionRelativeInSteps(relativeTargetPosition);
+      long relativeSteps = steps * motorDirection;
+      stepper.moveRelativeInSteps(relativeSteps);
       delay(1000);
+      servo.write(180);
+      delay(1000);        
+      servo.write(90);
+      delay(1000);
+      
       motorDirection *= -1;
-      relativeTargetPosition = steps * motorDirection;
-      Serial.printf("Moving stepper by %ld steps\n", relativeTargetPosition);
-      Serial.printf("Moving stepper by %ld direction\n", motorDirection);
-      stepper.setTargetPositionRelativeInSteps(relativeTargetPosition);
+      relativeSteps = steps * motorDirection;
+      stepper.moveRelativeInSteps(relativeSteps);
       QueueSteps.pop();
       motorDirection *= -1;
-      if(!QueueSteps.empty()) {
-        process_sound();
+      digitalWrite(MOTOR_ENABLE, HIGH);
+      delay(1000);
+      Neo_pixel.stop();                            //Se apagan los leds
+
+      if(QueueSteps.size()<=1) {
+        process_notify();
       }
     }
     vTaskDelay(10);
@@ -59,18 +171,31 @@ void processStepsTask(void *pvParameters){
 
 void setup() {
   Serial.begin(115200);
-  pinMode(ledPin, OUTPUT);
-  digitalWrite(ledPin, LOW);
   setTime(0, 0, 0, 1, 1, 2023);
+
   WiFi.softAP(ssid, password);
   Serial.println("Punto de acceso WiFi creado");
+  Serial.print("IP Adress:");
   Serial.println(WiFi.softAPIP());
+
+  pinMode(MOTOR_ENABLE, OUTPUT);
+  pinMode(4, OUTPUT);
+  digitalWrite(MOTOR_ENABLE, HIGH);
+
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
+
+  servo.setPeriodHertz(50);
+  servo.attach(SERVO_PIN, 500, 2400);
+  servo.write(90);
 
   stepper.connectToPins(MOTOR_STEP_PIN, MOTOR_DIRECTION_PIN);
   stepper.setSpeedInStepsPerSecond(SPEED_IN_STEPS_PER_SECOND);
   stepper.setAccelerationInStepsPerSecondPerSecond(ACCELERATION_IN_STEPS_PER_SECOND_PER_SECOND);
   stepper.setDecelerationInStepsPerSecondPerSecond(DECELERATION_IN_STEPS_PER_SECOND_PER_SECOND);
-  stepper.startAsService(0);
+
 
   xTaskCreate(
     processStepsTask,
@@ -80,6 +205,13 @@ void setup() {
     1,
     NULL
   );
+
+  Neo_setup();
+  if(Neo_pixel.isRunning()){
+    delay(3000);
+    Neo_pixel.stop();
+    //Serial.println("Neo Ready!");  
+  }
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     String html = R"(
@@ -147,7 +279,7 @@ void setup() {
         </head>
         <body>
           <header>
-            <h1>Auto-Medico</h1>
+            <h1>Auto-Dosis</h1>
           </header>
           <div class="container">
             <div class="medicamento">
@@ -371,6 +503,11 @@ void setup() {
       id8 = Alarm.timerRepeat(interval[7]*60, process_alarm);
 
       request->send(200, "text/plain", "Alarma configurada con éxito");
+      Serial.println("Alarma configurada con éxito");
+      Neo_pixel.setMode(FX_MODE_CHASE_RAINBOW);
+      Neo_pixel.start();
+      delay(2000);
+      Neo_pixel.stop();
     } else {
       request->send(400, "text/plain", "Error en la configuración de la alarma");
     }
@@ -378,9 +515,42 @@ void setup() {
 
   server.begin();
 }
+void process_movement(){  
+  Neo_pixel.setColor(RED);
+  Neo_pixel.setMode(FX_MODE_BLINK);
+  Neo_pixel.start();
+}
+void Neo_setup(){
+  Neo_pixel.init();
+  Neo_pixel.setBrightness(255);
+  Neo_pixel.setSpeed(100);
+  Neo_pixel.setMode(FX_MODE_RAINBOW_LARSON);
+  Neo_pixel.start();  
+}
+void process_notify() {    
+  //LEDs  
+  Neo_pixel.setColor(GREEN);
+  Neo_pixel.setMode(FX_MODE_BLINK);
+  Neo_pixel.start();
+  //Sonido
+  // digitalWrite(4, HIGH);
+  // delay(1000);
+  // digitalWrite(4, LOW);
+  // delay(1000);
+  // digitalWrite(4, HIGH);
+  // delay(1000);
+  // digitalWrite(4, LOW);
+  // delay(1000);  
 
-void process_sound() {
-  Serial.println("Sonando....");
+  for (int i=0; i<8; ++i){
+    int noteDuration = 1000/noteDurations[i];
+    tone(4, melody[i], noteDuration);
+    int pauseBetweenNotes = noteDuration * 1.30;
+    delay(pauseBetweenNotes);
+    noTone(4);
+  }
+  delay(6000);
+  Neo_pixel.stop();
 }
 
 void process_alarm(){
@@ -390,4 +560,5 @@ void process_alarm(){
 
 void loop() {
   Alarm.delay(1000);
+  Neo_pixel.service();
 }
